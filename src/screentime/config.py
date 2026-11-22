@@ -21,7 +21,7 @@ knowledgec = true      # this Mac's own usage
 
 [lookup]               # name apps the Mac does not know (mostly iPhone apps) from Apple's App Store lookup
 enabled = true         # only bundle ids go to itunes.apple.com; false keeps everything offline
-country = "us"
+countries = ["us", "id", "pl", "th", "ge", "ua"]  # storefronts in order; the next only for apps not found yet
 ```
 """
 
@@ -32,6 +32,9 @@ import os
 from pathlib import Path
 import sys
 import tomllib
+
+
+DEFAULT_COUNTRIES = ("us", "id", "pl", "th", "ge", "ua")
 
 
 @dataclass(frozen=True)
@@ -49,7 +52,8 @@ class Settings:
     devices: dict[str, str] = field(default_factory=dict)
     request_timeout: float = 30.0
     lookup_enabled: bool = True  # name unknown apps from Apple's public App Store lookup
-    lookup_country: str = "us"  # App Store storefront to ask
+    # App Store storefronts to ask, in order: the next one only for apps the previous ones did not have.
+    lookup_countries: tuple[str, ...] = DEFAULT_COUNTRIES
 
 
 def config_path() -> Path:
@@ -83,5 +87,13 @@ def load_settings(path: Path | None = None) -> Settings:
         devices={str(key): str(value) for key, value in (raw.get("devices") or {}).items() if value},
         request_timeout=float(raw.get("request_timeout", 30.0)),
         lookup_enabled=bool((raw.get("lookup") or {}).get("enabled", True)),
-        lookup_country=str((raw.get("lookup") or {}).get("country") or "us").lower(),
+        lookup_countries=_countries(raw.get("lookup") or {}),
     )
+
+
+def _countries(lookup: dict) -> tuple[str, ...]:
+    countries = lookup.get("countries")
+    if countries is None and lookup.get("country"):  # the older single-country setting
+        countries = [lookup["country"]]
+    cleaned = tuple(dict.fromkeys(str(c).strip().lower() for c in (countries or DEFAULT_COUNTRIES) if str(c).strip()))
+    return cleaned or DEFAULT_COUNTRIES

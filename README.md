@@ -104,7 +104,7 @@ knowledgec = true               # this Mac
 
 [lookup]                        # App Store names for apps the Mac does not know (mostly iPhone apps)
 enabled = true                  # false: no requests to Apple at all
-country = "us"
+countries = ["us", "id", "pl", "th", "ge", "ua"]   # storefronts in order; the next only for apps not found yet
 ```
 
 ## What it sends

@@ -14,6 +14,7 @@ from importlib.resources import files
 import json
 from pathlib import Path
 import plistlib
+import re
 import subprocess
 import sys
 from typing import Any, NamedTuple
@@ -98,7 +99,7 @@ def app_info(bundle_id: str) -> AppInfo:
 
 LOOKUP_URL = "https://itunes.apple.com/lookup"
 LOOKUP_BATCH = 50
-LOOKUP_BATCHES_PER_RUN = 4  # Apple allows about 20 requests a minute
+LOOKUP_REQUESTS_PER_RUN = 10  # Apple allows about 20 requests a minute, and the tracker runs every minute
 LOOKUP_RETRY = timedelta(days=7)
 
 
@@ -107,7 +108,7 @@ def resolve(
     cache: dict[str, Any],
     *,
     lookup: bool,
-    country: str,
+    countries: tuple[str, ...],
     timeout: float,
 ) -> dict[str, AppInfo]:
     """Names and categories for these bundle ids; ``cache`` (from state.json) keeps App Store answers between runs."""
@@ -131,17 +132,37 @@ def resolve(
             and now - datetime.fromisoformat(cache[bundle_id]["checked_at"]) > LOOKUP_RETRY
         )
     ]
-    for start in range(0, min(len(due), LOOKUP_BATCH * LOOKUP_BATCHES_PER_RUN), LOOKUP_BATCH):
+    budget = LOOKUP_REQUESTS_PER_RUN
+    for start in range(0, len(due), LOOKUP_BATCH):
         batch = due[start : start + LOOKUP_BATCH]
-        try:
-            found = _itunes(batch, country, timeout)
-        except (requests.RequestException, ValueError):
-            break  # offline or rate-limited: try again on a later run
+        found: dict[str, AppInfo] = {}
+        missing = list(batch)
+        complete = True
+        # Each storefront in order, asked only about the apps the earlier ones did not have.
+        for country in countries:
+            if not missing:
+                break
+            if budget <= 0:
+                complete = False
+                break
+            budget -= 1
+            try:
+                answers = _itunes(missing, country, timeout)
+            except (requests.RequestException, ValueError):
+                complete = False  # offline or rate-limited: try again on a later run
+                break
+            found.update(answers)
+            missing = [bundle_id for bundle_id in missing if bundle_id.lower() not in answers]
         for bundle_id in batch:
-            info = found.get(bundle_id.lower(), AppInfo())
+            info = found.get(bundle_id.lower())
+            if info is None and not complete:
+                continue  # not every storefront was asked yet: ask again on a later run
+            info = info or AppInfo()
             cache[bundle_id] = {"name": info.name, "category": info.category, "checked_at": now.isoformat()}
             if info.name:
                 apps[bundle_id] = info
+        if budget <= 0:
+            break
     return apps
 
 
@@ -157,8 +178,8 @@ def _itunes(bundle_ids: list[str], country: str, timeout: float) -> dict[str, Ap
     for result in response.json().get("results", []):
         if not result.get("bundleId") or not result.get("trackName"):
             continue
-        # "Spotify: Music and Podcasts" -> "Spotify"
-        name = str(result["trackName"]).split(":")[0].split(" - ")[0].strip() or str(result["trackName"])
+        # "Spotify: Music and Podcasts", "WhiteBIT – buy & sell bitcoin", "Trustee Plus | Wallet" -> the short name
+        name = re.split(r":| [-–—|] ", str(result["trackName"]), maxsplit=1)[0].strip() or str(result["trackName"])
         candidates = [result.get("primaryGenreName"), *result.get("genres", [])]
         category = next((genres[g] for g in candidates if g in genres), "Other")
         found[str(result["bundleId"]).lower()] = AppInfo(name, category)

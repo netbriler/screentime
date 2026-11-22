@@ -161,7 +161,7 @@ def run(settings: Settings) -> RunResult:
                 {event.bundle_id for event in events},
                 state.setdefault("app_names", {}),
                 lookup=settings.lookup_enabled,
-                country=settings.lookup_country,
+                countries=settings.lookup_countries,
                 timeout=settings.request_timeout,
             )
             # In a replay, an old event read again is not new: only servers missing it get it (_wanted_in_replay).
