@@ -149,23 +149,33 @@ def _segments(directory: Path) -> list[Path]:
 class BiomeSource:
     name = "biome"
 
-    def __init__(self, library: Path, models: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        library: Path,
+        models: dict[str, str] | None = None,
+        peers: dict[str, list] | None = None,
+    ) -> None:
         self.library = Path(library)
-        # Hardware models by IDS id, as the collector exports them; None reads them from knowledgeC (tests).
+        # As the collector exports them: hardware models by IDS id, and synced devices by id -> [IDS id, name,
+        # platform]. None reads them from knowledgeC and sync.db under `library` (tests, development).
         self.models = models
+        self.peers = peers
 
     def devices(self) -> list[Device]:
         """iOS/iPadOS peers from ``sync.db`` that have an App.InFocus stream."""
         streams = self.library / STREAM
         if not streams.is_dir():
             return []
-        peers = {
-            row[0]: row[1:]
-            for row in _query(
-                self.library / SYNC_DB,
-                "SELECT device_identifier, ids_device_identifier, name, platform FROM DevicePeer",
-            )
-        }
+        if self.peers is not None:
+            peers = {key: tuple(value) for key, value in self.peers.items()}
+        else:
+            peers = {
+                row[0]: row[1:]
+                for row in _query(
+                    self.library / SYNC_DB,
+                    "SELECT device_identifier, ids_device_identifier, name, platform FROM DevicePeer",
+                )
+            }
         # knowledgeC knows the hardware model (e.g. "iPhone16,1") by IDS id.
         models = self.models
         if models is None:

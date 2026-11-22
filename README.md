@@ -25,11 +25,12 @@ messages and documents. So the work is split:
 as its own launchd agent every minute and does exactly two things, with paths and queries fixed in the code:
 
 - **iPhone/iPad** — copies the small, append-only segment files of
-  `~/Library/Biome/streams/restricted/App.InFocus/remote` and `~/Library/Biome/sync/sync.db`. Only new or changed
-  files are copied; copies of deleted segments are removed.
+  `~/Library/Biome/streams/restricted/App.InFocus/remote`. Only new or changed files are copied; copies of deleted
+  segments are removed. The synced devices' ids, names and platforms come from one read-only query on
+  `~/Library/Biome/sync/sync.db`, written to `devices.json`; that database (tens of MB) is never copied.
 - **This Mac** — runs one read-only query on `~/Library/Application Support/Knowledge/knowledgeC.db` (stream
   `/app/usage`, this Mac's rows only) and writes the new rows to small `new-<time>.jsonl` files, plus the synced
-  devices' hardware models to `peers.json`. The database itself is never copied.
+  devices' hardware models to `peers.json`. The database itself is never copied either.
 
 Everything goes to `~/Library/Application Support/screentime/snapshot`, readable by you only. The collector takes no
 arguments, finds your home folder from the account database (not `$HOME`) and never opens a network connection, so

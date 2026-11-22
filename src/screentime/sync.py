@@ -23,8 +23,9 @@ log = logging.getLogger(__name__)
 # The collector's copy of the Screen Time stores; the tracker never reads the real ones. SCREENTIME_LIBRARY points
 # elsewhere for development and tests.
 LIBRARY = Path(os.environ.get("SCREENTIME_LIBRARY") or snapshot_library())
-# The collector's export of this Mac's knowledgeC rows.
+# The collector's exports: this Mac's knowledgeC rows, and the synced devices from Biome's sync.db.
 KNOWLEDGEC_EXPORT = Path(os.environ.get("SCREENTIME_KNOWLEDGEC_EXPORT") or snapshot_library().parent / "knowledgec")
+BIOME_EXPORT = Path(os.environ.get("SCREENTIME_BIOME_EXPORT") or snapshot_library().parent / "biome")
 
 
 @dataclass
@@ -35,11 +36,13 @@ class RunResult:
     errors: list[str] = field(default_factory=list)
 
 
-def _peer_models() -> dict[str, str]:
+def _exported(path: Path) -> dict:
+    """A JSON map the collector wrote, or an empty one before its first run."""
     try:
-        return {str(k): str(v) for k, v in json.loads((KNOWLEDGEC_EXPORT / "peers.json").read_text("utf-8")).items()}
-    except (OSError, ValueError, AttributeError):
+        data = json.loads(path.read_text("utf-8"))
+    except (OSError, ValueError):
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def enabled_sources(settings: Settings) -> list[Source]:
@@ -48,7 +51,13 @@ def enabled_sources(settings: Settings) -> list[Source]:
     if settings.sources.get("biome", True):
         from .sources.biome import BiomeSource
 
-        sources.append(BiomeSource(LIBRARY, models=_peer_models()))
+        sources.append(
+            BiomeSource(
+                LIBRARY,
+                models=_exported(KNOWLEDGEC_EXPORT / "peers.json"),
+                peers=_exported(BIOME_EXPORT / "devices.json"),
+            )
+        )
     if settings.sources.get("knowledgec", True):
         from .sources.knowledgec import KnowledgeCExportSource
 

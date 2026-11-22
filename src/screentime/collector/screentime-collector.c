@@ -5,9 +5,11 @@
  * anything else. It does this and nothing more:
  *
  *   iPhone/iPad (Biome): copies the small, append-only segment files of
- *     ~/Library/Biome/streams/restricted/App.InFocus/remote/ and ~/Library/Biome/sync/sync.db
+ *     ~/Library/Biome/streams/restricted/App.InFocus/remote/
  *     -> ~/Library/Application Support/screentime/snapshot/Library/Biome/...
- *     Only new or changed files are copied; the tracker's Python code parses them.
+ *     Only new or changed files are copied; the tracker's Python code parses them. The synced devices' ids, names and
+ *     platforms come from one fixed, read-only query on ~/Library/Biome/sync/sync.db, written to
+ *     snapshot/biome/devices.json; that database (tens of MB) is never copied.
  *
  *   This Mac (knowledgeC): runs one fixed, read-only query on
  *     ~/Library/Application Support/Knowledge/knowledgeC.db
@@ -76,7 +78,6 @@ static int copy_if_changed(const char *src, const char *dst) {
     char tmp[PATH_MAX];
     if (snprintf(tmp, sizeof tmp, "%s.part", dst) >= (int)sizeof tmp) return -1;
     unlink(tmp);
-    bytes_written += s.st_size;
     if (copyfile(src, tmp, NULL, COPYFILE_DATA) != 0) {
         unlink(tmp);
         return -1;
@@ -86,6 +87,7 @@ static int copy_if_changed(const char *src, const char *dst) {
         unlink(tmp);
         return -1;
     }
+    bytes_written += s.st_size;
     return 1;
 }
 
@@ -130,47 +132,6 @@ static void mirror(const char *src, const char *dst, int depth) {
     closedir(out);
 }
 
-/* Copy a SQLite database with its -wal and -shm, again if the database changed while copying. */
-static void copy_database(const char *src_dir, const char *dst_dir, const char *name) {
-    static const char *suffixes[] = {"", "-wal", "-shm"};
-    if (make_dirs(dst_dir) != 0) {
-        failed++;
-        return;
-    }
-    for (int attempt = 0; attempt < 3; attempt++) {
-        struct stat before[3], after[3];
-        int present[3], result = 0;
-        for (int i = 0; i < 3; i++) {
-            char s[PATH_MAX], d[PATH_MAX], file[NAME_MAX + 1];
-            snprintf(file, sizeof file, "%s%s", name, suffixes[i]);
-            if (join(s, src_dir, file) || join(d, dst_dir, file)) return;
-            present[i] = lstat(s, &before[i]) == 0;
-            if (!present[i]) {
-                if (errno != ENOENT) result = -1;
-                unlink(d);  /* no stale -wal next to a newer database */
-                continue;
-            }
-            int r = copy_if_changed(s, d);
-            if (r < 0) result = -1;
-            if (r > 0) copied++;
-        }
-        if (result < 0) {
-            failed++;
-            return;
-        }
-        int stable = 1;
-        for (int i = 0; i < 2; i++) {  /* the database and its log; -shm changes all the time and is rebuilt */
-            char s[PATH_MAX], file[NAME_MAX + 1];
-            snprintf(file, sizeof file, "%s%s", name, suffixes[i]);
-            if (join(s, src_dir, file)) return;
-            int now = lstat(s, &after[i]) == 0;
-            if (now != present[i] || (now && !same(&before[i], &after[i]))) stable = 0;
-        }
-        if (stable) return;
-    }
-    failed++;
-}
-
 /* ---- knowledgeC: one fixed query, new rows only -------------------------------------------------------------- */
 
 /* The same rows the tracker's knowledgeC source reads: this Mac's own /app/usage intervals (rows synced from other
@@ -181,6 +142,9 @@ static const char *USAGE_QUERY =
     "LEFT JOIN ZSOURCE s ON s.Z_PK = o.ZSOURCE "
     "WHERE o.ZSTREAMNAME = '/app/usage' AND s.ZDEVICEID IS NULL AND o.ZCREATIONDATE > ? "
     "ORDER BY o.ZCREATIONDATE";
+/* Synced devices from Biome's sync.db: id -> [IDS id, name, platform]. */
+static const char *DEVICES_QUERY =
+    "SELECT device_identifier, ids_device_identifier, name, platform FROM DevicePeer";
 /* Hardware models of the synced iPhones and iPads, which the tracker uses to tell them apart. */
 static const char *PEERS_QUERY =
     "SELECT ZRAPPORTID, ZMODEL FROM ZSYNCPEER WHERE ZRAPPORTID IS NOT NULL AND ZMODEL IS NOT NULL";
@@ -222,9 +186,12 @@ static int finish_part(FILE *f, const char *part, const char *path) {
     return 0;
 }
 
-static void export_peers(sqlite3 *db, const char *dir) {
+/* Write the rows of `query` as a JSON object to dir/name: first column -> second column, or -> an array of the
+ * remaining columns when there are more. Rewritten only when it changes. */
+static void export_map(sqlite3 *db, const char *query, const char *dir, const char *name) {
     sqlite3_stmt *stmt;
-    if (sqlite3_prepare_v2(db, PEERS_QUERY, -1, &stmt, NULL) != SQLITE_OK) return;  /* older macOS: no such table */
+    if (sqlite3_prepare_v2(db, query, -1, &stmt, NULL) != SQLITE_OK) return;  /* older macOS: no such table */
+    int columns = sqlite3_column_count(stmt);
     /* Built in memory first, so peers.json is rewritten only when it changes. */
     char *buffer = NULL;
     size_t length = 0;
@@ -238,14 +205,25 @@ static void export_peers(sqlite3 *db, const char *dir) {
         if (!first) fputc(',', mem);
         json_string(mem, sqlite3_column_text(stmt, 0));
         fputc(':', mem);
-        json_string(mem, sqlite3_column_text(stmt, 1));
+        if (columns == 2) {
+            json_string(mem, sqlite3_column_text(stmt, 1));
+            continue;
+        }
+        fputc('[', mem);
+        for (int i = 1; i < columns; i++) {
+            if (i > 1) fputc(',', mem);
+            if (sqlite3_column_type(stmt, i) == SQLITE_INTEGER) fprintf(mem, "%lld", sqlite3_column_int64(stmt, i));
+            else if (sqlite3_column_type(stmt, i) == SQLITE_NULL) fputs("null", mem);
+            else json_string(mem, sqlite3_column_text(stmt, i));
+        }
+        fputc(']', mem);
     }
     fputs("}\n", mem);
     fclose(mem);
     sqlite3_finalize(stmt);
 
     char path[PATH_MAX], part[PATH_MAX];
-    join(path, dir, "peers.json");
+    join(path, dir, name);
     FILE *old = fopen(path, "r");
     if (old) {
         char *current = malloc(length + 1);
@@ -263,28 +241,41 @@ static void export_peers(sqlite3 *db, const char *dir) {
     free(buffer);
 }
 
-static void export_knowledge(const char *db_path, const char *dir) {
+/* Open a database Apple owns read-only (it is never written; SQLite takes only its shared read lock), or NULL. */
+static sqlite3 *open_readonly(const char *db_path, const char *dir, const char *label) {
     struct stat st;
     if (stat(db_path, &st) != 0) {
-        if (errno != ENOENT) failed++;  /* EPERM: no Full Disk Access yet */
-        return;
+        if (errno != ENOENT) failed++;
+        return NULL;
     }
     if (make_dirs(dir) != 0) {
         failed++;
-        return;
+        return NULL;
     }
     char uri[PATH_MAX + 32];
     snprintf(uri, sizeof uri, "file:%s?mode=ro", db_path);
     sqlite3 *db = NULL;
-    /* Read-only: the database is never written. SQLite only takes its usual shared read lock. */
     if (sqlite3_open_v2(uri, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, NULL) != SQLITE_OK) {
-        fprintf(stderr, "knowledgeC: %s\n", db ? sqlite3_errmsg(db) : "cannot open");
+        fprintf(stderr, "%s: %s\n", label, db ? sqlite3_errmsg(db) : "cannot open");  /* no Full Disk Access yet */
         sqlite3_close(db);
         failed++;
-        return;
+        return NULL;
     }
     sqlite3_busy_timeout(db, 5000);
-    export_peers(db, dir);
+    return db;
+}
+
+static void export_biome_devices(const char *db_path, const char *dir) {
+    sqlite3 *db = open_readonly(db_path, dir, "Biome sync.db");
+    if (!db) return;
+    export_map(db, DEVICES_QUERY, dir, "devices.json");
+    sqlite3_close(db);
+}
+
+static void export_knowledge(const char *db_path, const char *dir) {
+    sqlite3 *db = open_readonly(db_path, dir, "knowledgeC");
+    if (!db) return;
+    export_map(db, PEERS_QUERY, dir, "peers.json");
 
     char cursor_path[PATH_MAX];
     join(cursor_path, dir, "cursor");
@@ -358,9 +349,10 @@ int main(int argc, char **argv) {
     join(d, out, "Biome/streams/restricted/App.InFocus/remote");
     mirror(s, d, 1);
 
-    join(s, lib, "Biome/sync");
-    join(d, out, "Biome/sync");
-    copy_database(s, d, "sync.db");
+    char devices_dir[PATH_MAX];
+    join(s, lib, "Biome/sync/sync.db");
+    snprintf(devices_dir, sizeof devices_dir, "%s/Library/Application Support/screentime/snapshot/biome", home);
+    export_biome_devices(s, devices_dir);
 
     char knowledge[PATH_MAX], export_dir[PATH_MAX];
     snprintf(knowledge, sizeof knowledge, "%s/Application Support/Knowledge/knowledgeC.db", lib);
