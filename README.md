@@ -123,6 +123,12 @@ Nothing is sent when nothing is new. Each server has its own queue in
 run, without holding up the others. Events are queued before the read position moves, so nothing is lost; an event
 sent twice only updates itself on the server.
 
+Every reply says what the server holds: the start of its newest event per device (`latest`). The tracker remembers
+it; if it goes back later (the server's database was reset or restored), the tracker reads the history again and
+queues for that server everything newer than what it still has, while the other servers only get the last day again
+(they just update it). With nothing new to send it still asks each server once an hour. `screentime resend
+[--server NAME]` does the same on request. Only what macOS still keeps, about four weeks, can be sent again.
+
 ## Commands
 
 | Command | |
@@ -131,6 +137,7 @@ sent twice only updates itself on the server.
 | `screentime install` | build the collector, install both agents and the sandbox profile |
 | `screentime test` | collector freshness, every server, sandbox self-check |
 | `screentime run` | read and send now (what the tracker agent runs) |
+| `screentime resend [--server NAME]` | read all history again and send it to one server (default: all) |
 | `screentime uninstall` | remove both agents |
 
 | Where | |
