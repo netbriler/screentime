@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from importlib.resources import files
+import json
 from typing import Any, Literal, Protocol
 
 Platform = Literal["iphone", "ipad", "mac", "unknown"]
@@ -26,6 +28,14 @@ class Device:
     platform: Platform
     source: str  # "biome" | "knowledgec"
     model: str = ""  # hardware identifier, e.g. "iPhone17,1", if known
+
+
+_MODELS: dict[str, str] = json.loads(files("screentime").joinpath("data/models.json").read_text("utf-8"))
+
+
+def model_name(model: str) -> str:
+    """``"iPhone18,1"`` → ``"iPhone 17 Pro"``; unknown identifiers pass through."""
+    return _MODELS.get(model, model)
 
 
 @dataclass(frozen=True)

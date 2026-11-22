@@ -10,7 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .apps import resolve
+from .apps import AppInfo, resolve
 from .collector import snapshot_library
 from .config import Settings, data_dir
 from .locking import process_lock
@@ -90,11 +90,13 @@ def _device(device: Device, settings: Settings) -> dict[str, Any]:
     return {**asdict(device), "name": settings.devices.get(device.id) or device.name}
 
 
-def _event(event: UsageEvent, names: dict[str, str]) -> dict[str, Any]:
+def _event(event: UsageEvent, apps: dict[str, AppInfo]) -> dict[str, Any]:
+    app = apps.get(event.bundle_id, AppInfo())
     return {
         "device_id": event.device_id,
         "bundle_id": event.bundle_id,
-        "app_name": names.get(event.bundle_id, ""),
+        "app_name": app.name,
+        "app_category": app.category,
         "start": event.start.isoformat(),
         "end": event.end.isoformat(),
     }
@@ -116,14 +118,14 @@ def run(settings: Settings) -> RunResult:
                 log.exception("%s failed", source.name)
                 result.errors.append(f"{source.name}: {exc}")
                 continue
-            names = resolve(
+            apps = resolve(
                 {event.bundle_id for event in events},
                 state.setdefault("app_names", {}),
                 lookup=settings.lookup_enabled,
                 country=settings.lookup_country,
                 timeout=settings.request_timeout,
             )
-            payload = [_event(event, names) for event in events]
+            payload = [_event(event, apps) for event in events]
             result.read += len(payload)
             for server in servers:
                 state["outbox"].setdefault(server.name, []).extend(payload)

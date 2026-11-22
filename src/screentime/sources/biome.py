@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from screentime._vendor import ccl_segb
-from screentime.sources import Device, Platform, UsageEvent
+from screentime.sources import Device, Platform, UsageEvent, model_name
 
 log = logging.getLogger(__name__)
 
@@ -197,7 +197,7 @@ class BiomeSource:
             if platform == "unknown" and platform_code != PLATFORM_IOS:
                 continue
             # The short id keeps two unnamed devices of one model apart.
-            label = name or f"{model or 'iOS device'} ({directory.name[:8]})"
+            label = name or f"{model_name(model) or 'iOS device'} ({directory.name[:8]})"
             devices.append(Device(directory.name, label, platform, self.name, model))
         return devices
 

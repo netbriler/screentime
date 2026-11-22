@@ -44,8 +44,9 @@ inside the macOS sandbox (`/usr/bin/sandbox-exec`, profile in `~/.config/screent
 read nothing in your home folder but its Python, its config and its own folder, and write nothing but its own folder,
 its logs and temporary files. The real Screen Time stores are out of its reach even by mistake.
 
-Each event is one stretch of one app in front: device, bundle id, app name, start and end. App names come from a
-shipped list, the app installed on this Mac (Spotlight), or else Apple's public App Store lookup
+Each event is one stretch of one app in front: device, bundle id, app name and category (Social, Media, Coding, …, a
+hint for the server), start and end. They come from a shipped list, the app installed on this Mac (Spotlight and its
+`Info.plist`), or else Apple's public App Store lookup
 (`itunes.apple.com/lookup`, on by default): only bundle ids go to Apple, each app is asked about once, and
 `[lookup] enabled = false` turns it off. Usage goes nowhere but your servers.
 
@@ -113,7 +114,7 @@ POST <url>
 Authorization: Bearer <token>
 
 {"devices": [{"id": "…", "name": "My iPhone", "platform": "iphone", "model": "iPhone17,1", "source": "biome"}],
- "events": [{"device_id": "…", "bundle_id": "com.google.ios.youtube", "app_name": "YouTube",
+ "events": [{"device_id": "…", "bundle_id": "com.google.ios.youtube", "app_name": "YouTube", "app_category": "Media",
              "start": "2026-11-22T09:00:00+00:00", "end": "2026-11-22T09:12:30+00:00"}]}
 ```
 
