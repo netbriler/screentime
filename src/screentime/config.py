@@ -18,6 +18,9 @@ knowledgec = true      # this Mac's own usage
 
 [devices]              # optional display names by device id
 # "00000000-0000-0000-0000-000000000000" = "My iPhone"
+# A table adds the platform and marks a work account (not personal use); a Biome stream that is not among the synced
+# devices, such as another user account on this Mac, is read only when it is listed like this:
+# "11111111-1111-1111-1111-111111111111" = { name = "Mac (work account)", platform = "mac", work = true }
 
 [lookup]               # name apps the Mac does not know (mostly iPhone apps) from Apple's App Store lookup
 enabled = true         # only bundle ids go to itunes.apple.com; false keeps everything offline
@@ -49,7 +52,10 @@ class Server:
 class Settings:
     servers: list[Server] = field(default_factory=list)
     sources: dict[str, bool] = field(default_factory=dict)
-    devices: dict[str, str] = field(default_factory=dict)
+    devices: dict[str, str] = field(default_factory=dict)  # device id -> display name
+    # Devices described in [devices] as a table: platform, and work = true for a work account (not personal use).
+    # A Biome stream not among the synced devices (e.g. another user account on this Mac) is read only when listed.
+    device_details: dict[str, dict] = field(default_factory=dict)
     request_timeout: float = 30.0
     lookup_enabled: bool = True  # name unknown apps from Apple's public App Store lookup
     # App Store storefronts to ask, in order: the next one only for apps the previous ones did not have.
@@ -84,11 +90,30 @@ def load_settings(path: Path | None = None) -> Settings:
     return Settings(
         servers=servers,
         sources={str(key): bool(value) for key, value in (raw.get("sources") or {}).items()},
-        devices={str(key): str(value) for key, value in (raw.get("devices") or {}).items() if value},
+        devices=_device_names(raw.get("devices") or {}),
+        device_details=_device_details(raw.get("devices") or {}),
         request_timeout=float(raw.get("request_timeout", 30.0)),
         lookup_enabled=bool((raw.get("lookup") or {}).get("enabled", True)),
         lookup_countries=_countries(raw.get("lookup") or {}),
     )
+
+
+def _device_names(devices: dict) -> dict[str, str]:
+    """``"<id>" = "Name"`` or ``"<id>" = { name = "Name", … }``."""
+    names = {}
+    for key, value in devices.items():
+        name = value.get("name") if isinstance(value, dict) else value
+        if name:
+            names[str(key)] = str(name)
+    return names
+
+
+def _device_details(devices: dict) -> dict[str, dict]:
+    return {
+        str(key): {"platform": str(value.get("platform") or "mac"), "work": bool(value.get("work", False))}
+        for key, value in devices.items()
+        if isinstance(value, dict)
+    }
 
 
 def _countries(lookup: dict) -> tuple[str, ...]:

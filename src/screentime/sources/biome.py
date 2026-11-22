@@ -154,12 +154,15 @@ class BiomeSource:
         library: Path,
         models: dict[str, str] | None = None,
         peers: dict[str, list] | None = None,
+        extra: dict[str, dict] | None = None,
     ) -> None:
         self.library = Path(library)
         # As the collector exports them: hardware models by IDS id, and synced devices by id -> [IDS id, name,
         # platform]. None reads them from knowledgeC and sync.db under `library` (tests, development).
         self.models = models
         self.peers = peers
+        # Streams the config lists by id, e.g. another user account on this Mac: id -> {"platform": …}.
+        self.extra = extra or {}
 
     def devices(self) -> list[Device]:
         """iOS/iPadOS peers from ``sync.db`` that have an App.InFocus stream."""
@@ -188,6 +191,12 @@ class BiomeSource:
         devices = []
         for directory in sorted(streams.iterdir()):
             if directory.name not in peers:
+                if directory.name in self.extra:  # listed in the config, e.g. another user account on this Mac
+                    platform_name = self.extra[directory.name].get("platform", "mac")
+                    platform_value: Platform = (
+                        platform_name if platform_name in ("mac", "iphone", "ipad") else "unknown"
+                    )
+                    devices.append(Device(directory.name, f"Device ({directory.name[:8]})", platform_value, self.name))
                 continue  # unknown peer: could be an Apple TV
             ids, name, platform_code = peers[directory.name]
             model = str(models.get(ids) or "")
