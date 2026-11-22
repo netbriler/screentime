@@ -56,7 +56,6 @@ def enabled_sources(settings: Settings) -> list[Source]:
                 LIBRARY,
                 models=_exported(KNOWLEDGEC_EXPORT / "peers.json"),
                 peers=_exported(BIOME_EXPORT / "devices.json"),
-                extra=settings.device_details,
             )
         )
     if settings.sources.get("knowledgec", True):
@@ -88,12 +87,7 @@ def _new_events(events: list[UsageEvent], sent: dict[str, list[str]]) -> list[Us
 
 
 def _device(device: Device, settings: Settings) -> dict[str, Any]:
-    details = settings.device_details.get(device.id, {})
-    return {
-        **asdict(device),
-        "name": settings.devices.get(device.id) or device.name,
-        "work": bool(details.get("work", False)),
-    }
+    return {**asdict(device), "name": settings.devices.get(device.id) or device.name}
 
 
 def _event(event: UsageEvent, apps: dict[str, AppInfo]) -> dict[str, Any]:

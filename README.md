@@ -101,9 +101,6 @@ knowledgec = true               # this Mac
 
 [devices]                       # optional names by device id
 # "<device id>" = "My iPhone"
-# a table adds the platform and marks a work account (sent as "work": true, reported apart from personal use);
-# a Biome stream that is not among the synced devices, e.g. another user account on this Mac, is read only if listed:
-# "<stream id>" = { name = "Mac (work account)", platform = "mac", work = true }
 
 [lookup]                        # App Store names for apps the Mac does not know (mostly iPhone apps)
 enabled = true                  # false: no requests to Apple at all
