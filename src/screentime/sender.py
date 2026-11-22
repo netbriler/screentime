@@ -49,12 +49,21 @@ def send_outbox(
     outbox: list[dict[str, Any]],
     devices: list[dict[str, Any]],
     timeout: float,
-) -> int:
-    """Send the outbox in batches; sent events are removed from it. Raises SendError and keeps the rest on failure."""
-    sent = 0
+    *,
+    check: bool = False,
+) -> tuple[int, dict[str, str] | None]:
+    """Send the outbox in batches; sent events are removed from it. Raises SendError and keeps the rest on failure.
+
+    Returns how many events were sent and the server's ``latest`` (newest stored event per device) from its last
+    reply. With ``check`` and nothing to send, an empty request still asks for ``latest``.
+    """
+    sent, latest = 0, None
     while outbox:
         batch = outbox[:BATCH_SIZE]
-        post(server, {"devices": devices, "events": batch}, timeout)
+        reply = post(server, {"devices": devices, "events": batch}, timeout)
+        latest = reply.get("latest", latest)
         del outbox[: len(batch)]
         sent += len(batch)
-    return sent
+    if check and not sent:
+        latest = post(server, {"devices": devices, "events": []}, timeout).get("latest")
+    return sent, latest

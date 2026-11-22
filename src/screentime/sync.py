@@ -102,18 +102,53 @@ def _event(event: UsageEvent, apps: dict[str, AppInfo]) -> dict[str, Any]:
     }
 
 
+# Every server says in each reply what it holds: the start of its newest event per device. If that goes back
+# compared with what it confirmed before (its database was reset or restored), the tracker reads the history again
+# and queues for that server everything newer than what it still has.
+CHECK_EVERY = timedelta(hours=1)  # with nothing new to send, ask each server this often anyway
+REPLAY_FOR = timedelta(minutes=5)  # long enough for the collector to export knowledgeC again
+# During a replay, healthy servers get only the last day again (they just update those events).
+REPLAY_OVERLAP = timedelta(days=1)
+
+
+def start_replay(state: dict[str, Any], *, server: str | None = None) -> None:
+    """Read all history again for a while; ``server`` forgets what that server confirmed, so it gets everything."""
+    if server is not None:
+        state.setdefault("latest", {})[server] = {}
+    state["sources"] = {}
+    state["replay_until"] = (datetime.now(UTC) + REPLAY_FOR).isoformat()
+    # The collector exports knowledgeC from the beginning again when its cursor is gone.
+    (KNOWLEDGEC_EXPORT / "cursor").unlink(missing_ok=True)
+
+
+def _lost_data(before: dict[str, str], now: dict[str, str]) -> list[str]:
+    """Devices whose newest event on the server went back, or vanished, since the last reply."""
+    return [device for device, latest in before.items() if now.get(device, "") < latest]
+
+
+def _wanted_in_replay(event: dict[str, Any], latest: dict[str, str]) -> bool:
+    known = latest.get(event["device_id"])
+    if not known:
+        return True
+    floor = (datetime.fromisoformat(known) - REPLAY_OVERLAP).isoformat()
+    return event["start"] > floor
+
+
 def run(settings: Settings) -> RunResult:
     result = RunResult()
     servers = [server for server in settings.servers if server.enabled]
     with process_lock(data_dir() / "screentime.lock"):
         state = load_state()
+        now = datetime.now(UTC)
+        replay = now.isoformat() < state.get("replay_until", "")
+        latest_by_server = state.setdefault("latest", {})
         devices: dict[str, dict[str, Any]] = {}
         for source in enabled_sources(settings):
             try:
                 for device in source.devices():
                     devices[device.id] = _device(device, settings)
                 events, source_state = source.read(state["sources"].get(source.name))
-                events = _new_events(events, state.setdefault("sent", {}))
+                fresh = {id(event) for event in _new_events(events, state.setdefault("sent", {}))}
             except Exception as exc:  # one broken source must not stop the other
                 log.exception("%s failed", source.name)
                 result.errors.append(f"{source.name}: {exc}")
@@ -125,24 +160,48 @@ def run(settings: Settings) -> RunResult:
                 country=settings.lookup_country,
                 timeout=settings.request_timeout,
             )
-            payload = [_event(event, apps) for event in events]
-            result.read += len(payload)
+            # In a replay, an old event read again is not new: only servers missing it get it (_wanted_in_replay).
+            recent = (now - SENT_MEMORY).isoformat()
+            payload = [
+                (id(event) in fresh and (not replay or event.start.isoformat() >= recent), _event(event, apps))
+                for event in events
+            ]
+            result.read += sum(is_fresh for is_fresh, _ in payload)
             for server in servers:
-                state["outbox"].setdefault(server.name, []).extend(payload)
+                latest = latest_by_server.get(server.name, {})
+                state["outbox"].setdefault(server.name, []).extend(
+                    event for is_fresh, event in payload if is_fresh or (replay and _wanted_in_replay(event, latest))
+                )
             # The cursor moves only together with the queued events, in one atomic write.
             state["sources"][source.name] = source_state
             save_state(state)
 
+        lost = []
         for server in servers:
             outbox = state["outbox"].setdefault(server.name, [])
+            contacts = state.setdefault("last_contact", {})
+            due = (
+                now.isoformat()
+                > (
+                    datetime.fromisoformat(contacts.get(server.name, "1970-01-01T00:00:00+00:00")) + CHECK_EVERY
+                ).isoformat()
+            )
             try:
-                result.sent[server.name] = send_outbox(
-                    server, outbox, list(devices.values()), settings.request_timeout
-                )
+                sent, latest = send_outbox(server, outbox, list(devices.values()), settings.request_timeout, check=due)
+                result.sent[server.name] = sent
+                if latest is not None:
+                    contacts[server.name] = now.isoformat()
+                    if gone := _lost_data(latest_by_server.get(server.name, {}), latest):
+                        lost.append(server.name)
+                        result.errors.append(f"{server.name}: lost data for {len(gone)} device(s); sending it again")
+                        latest = {}  # it gets everything it no longer has
+                    latest_by_server[server.name] = latest
             except SendError as exc:
                 result.errors.append(str(exc))
             result.queued[server.name] = len(outbox)
             save_state(state)
+        for name in lost:
+            start_replay(state, server=name)
         state["last_run"] = asdict(result)
         save_state(state)
     return result

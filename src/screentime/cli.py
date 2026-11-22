@@ -1,4 +1,4 @@
-"""``screentime`` command line: status, test, run, install, uninstall."""
+"""``screentime`` command line: status, test, run, resend, install, uninstall."""
 
 from __future__ import annotations
 
@@ -13,7 +13,10 @@ from . import __version__, collector, launchd, sandbox, status
 from .config import config_path, load_settings
 from .locking import LockBusyError
 from .sender import SendError, post
-from .sync import run
+from .config import data_dir
+from .locking import process_lock
+from .state import load_state, save_state
+from .sync import run, start_replay
 
 FDA_HINT = (
     "Give Full Disk Access (System Settings → Privacy & Security → Full Disk Access) to the collector, and to "
@@ -97,6 +100,23 @@ def _status(args: argparse.Namespace) -> int:
     return status.show(load_settings())
 
 
+def _resend(args: argparse.Namespace) -> int:
+    """Read all history again and queue it for one server (or all), e.g. after its database was reset."""
+    settings = load_settings()
+    names = [server.name for server in settings.servers]
+    if args.server and args.server not in names:
+        print(f"No server named {args.server!r}; configured: {', '.join(names) or 'none'}", file=sys.stderr)
+        return 2
+    with process_lock(data_dir() / "screentime.lock"):
+        state = load_state()
+        for name in [args.server] if args.server else names:
+            start_replay(state, server=name)
+        save_state(state)
+    target = args.server or "every server"
+    print(f"History will be read again and sent to {target} within two minutes (macOS keeps about four weeks).")
+    return 0
+
+
 def _install(args: argparse.Namespace) -> int:
     binary = collector.build()
     for path in launchd.install(launchd.program()):
@@ -124,6 +144,9 @@ def main(argv: list[str] | None = None) -> int:
         ("uninstall", _uninstall, "remove the background agent"),
     ):
         commands.add_parser(name, help=help_text).set_defaults(handler=handler)
+    resend = commands.add_parser("resend", help="send all history again, e.g. after a server's database was reset")
+    resend.add_argument("--server", help="only this server (its name in the config); default: all")
+    resend.set_defaults(handler=_resend)
     # Run by `screentime test` inside the sandbox; not meant to be called by hand.
     commands.add_parser("sandbox-check").set_defaults(handler=_sandbox_check)
     args = parser.parse_args(argv)
