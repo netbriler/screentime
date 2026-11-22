@@ -18,6 +18,10 @@ knowledgec = true      # this Mac's own usage
 
 [devices]              # optional display names by device id
 # "00000000-0000-0000-0000-000000000000" = "My iPhone"
+
+[lookup]               # name apps the Mac does not know (mostly iPhone apps) from Apple's App Store lookup
+enabled = true         # only bundle ids go to itunes.apple.com; false keeps everything offline
+country = "us"
 ```
 """
 
@@ -44,6 +48,8 @@ class Settings:
     sources: dict[str, bool] = field(default_factory=dict)
     devices: dict[str, str] = field(default_factory=dict)
     request_timeout: float = 30.0
+    lookup_enabled: bool = True  # name unknown apps from Apple's public App Store lookup
+    lookup_country: str = "us"  # App Store storefront to ask
 
 
 def config_path() -> Path:
@@ -76,4 +82,6 @@ def load_settings(path: Path | None = None) -> Settings:
         sources={str(key): bool(value) for key, value in (raw.get("sources") or {}).items()},
         devices={str(key): str(value) for key, value in (raw.get("devices") or {}).items() if value},
         request_timeout=float(raw.get("request_timeout", 30.0)),
+        lookup_enabled=bool((raw.get("lookup") or {}).get("enabled", True)),
+        lookup_country=str((raw.get("lookup") or {}).get("country") or "us").lower(),
     )

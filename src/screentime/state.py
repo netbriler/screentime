@@ -2,7 +2,8 @@
 
 * each source's cursor, so a run reads only what is new;
 * an outbox per server: events read but not yet accepted by that server. A server that is down keeps its events
-  and gets them on a later run; it never holds up the others.
+  and gets them on a later run; it never holds up the others;
+* app names from the App Store lookup, so each app is asked about once.
 
 Events are written to the outbox before the source cursor moves, so nothing read is ever lost.
 """

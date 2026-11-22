@@ -3,8 +3,8 @@
 Reads Apple Screen Time on your Mac and sends it to your own server — the
 [Second Brain](https://github.com/netbriler/second-brain) one — which stores it and answers questions about it.
 A trimmed fork of [nichtlegacy/screentime](https://github.com/nichtlegacy/screentime) that only reads activity and
-sends it: no local database, reports, Grafana, InfluxDB, Home Assistant, MCP, App Store lookups or setup wizard. The
-server stores and analyses everything.
+sends it: no local database, reports, Grafana, InfluxDB, Home Assistant, MCP or setup wizard. The server stores and
+analyses everything.
 
 What it reads, read-only:
 
@@ -14,8 +14,9 @@ What it reads, read-only:
   (`~/Library/Biome/streams/restricted/App.InFocus`), opened with `mode=ro&immutable=1`.
 
 Each event is one stretch of one app in front: device, bundle id, app name, start and end. The name comes from a
-shipped list or the app installed on this Mac (Spotlight); nothing is looked up online. Nothing else is read or sent,
-and nothing goes anywhere but your servers.
+shipped list, the app installed on this Mac (Spotlight), or else Apple's public App Store lookup
+(`itunes.apple.com/lookup`, on by default): only bundle ids go to Apple, each app is asked about once, and
+`[lookup] enabled = false` turns it off. Usage goes nowhere but your servers.
 
 ## Install
 
@@ -42,7 +43,7 @@ enforces it, whatever the code does:
   logs, and the Screen Time stores (`~/Library/Biome/streams/restricted/App.InFocus`, `~/Library/Biome/sync`,
   `~/Library/Application Support/Knowledge`);
 - nothing can be written except its state, its logs and the temporary folder;
-- the network stays open, to reach your servers.
+- the network stays open, to reach your servers and, unless turned off, the App Store lookup.
 
 The profile sits where the agent may read but not write, so it cannot loosen its own rules. `screentime test` runs a
 self-check inside it: it tries to read your home folder and `~/.ssh` and to write to your home folder, and reports
@@ -71,6 +72,10 @@ knowledgec = true               # this Mac
 
 [devices]                       # optional names by device id
 # "<device id>" = "My iPhone"
+
+[lookup]                        # App Store names for apps the Mac does not know (mostly iPhone apps)
+enabled = true                  # false: no requests to Apple at all
+country = "us"
 ```
 
 ## How it sends
