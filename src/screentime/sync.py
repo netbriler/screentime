@@ -126,6 +126,10 @@ def _lost_data(before: dict[str, str], now: dict[str, str]) -> list[str]:
     return [device for device, latest in before.items() if now.get(device, "") < latest]
 
 
+def _key(event: dict[str, Any]) -> tuple[str, str, str, str]:
+    return event["device_id"], event["bundle_id"], event["start"], event["end"]
+
+
 def _wanted_in_replay(event: dict[str, Any], latest: dict[str, str]) -> bool:
     known = latest.get(event["device_id"])
     if not known:
@@ -169,9 +173,12 @@ def run(settings: Settings) -> RunResult:
             result.read += sum(is_fresh for is_fresh, _ in payload)
             for server in servers:
                 latest = latest_by_server.get(server.name, {})
-                state["outbox"].setdefault(server.name, []).extend(
-                    event for is_fresh, event in payload if is_fresh or (replay and _wanted_in_replay(event, latest))
-                )
+                outbox = state["outbox"].setdefault(server.name, [])
+                queued = {_key(event) for event in outbox}  # never queue the same event twice
+                for is_fresh, event in payload:
+                    if (is_fresh or (replay and _wanted_in_replay(event, latest))) and _key(event) not in queued:
+                        outbox.append(event)
+                        queued.add(_key(event))
             # The cursor moves only together with the queued events, in one atomic write.
             state["sources"][source.name] = source_state
             save_state(state)
