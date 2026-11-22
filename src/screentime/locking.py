@@ -10,12 +10,6 @@ class LockBusyError(RuntimeError):
     pass
 
 
-def db_lock_path(db_path: Path) -> Path:
-    """Return the lock file that serialises screentime runs on one database."""
-
-    return Path(db_path).with_suffix(".lock")
-
-
 @contextmanager
 def process_lock(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)

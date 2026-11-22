@@ -34,7 +34,7 @@ from pathlib import Path
 from typing import Any
 
 from screentime._vendor import ccl_segb
-from screentime.sources import Device, Platform, UsageEvent, model_name
+from screentime.sources import Device, Platform, UsageEvent
 
 log = logging.getLogger(__name__)
 
@@ -161,16 +161,14 @@ class BiomeSource:
             row[0]: row[1:]
             for row in _query(
                 self.library / SYNC_DB,
-                "SELECT device_identifier, ids_device_identifier, name, platform"
-                " FROM DevicePeer",
+                "SELECT device_identifier, ids_device_identifier, name, platform FROM DevicePeer",
             )
         }
         # knowledgeC knows the hardware model (e.g. "iPhone16,1") by IDS id.
         models = dict(
             _query(
                 self.library / KNOWLEDGE_DB,
-                "SELECT ZRAPPORTID, ZMODEL FROM ZSYNCPEER"
-                " WHERE ZRAPPORTID IS NOT NULL AND ZMODEL IS NOT NULL",
+                "SELECT ZRAPPORTID, ZMODEL FROM ZSYNCPEER WHERE ZRAPPORTID IS NOT NULL AND ZMODEL IS NOT NULL",
             )
         )
         devices = []
@@ -180,24 +178,16 @@ class BiomeSource:
             ids, name, platform_code = peers[directory.name]
             model = str(models.get(ids) or "")
             platform: Platform = (
-                "iphone"
-                if model.startswith("iPhone")
-                else "ipad"
-                if model.startswith("iPad")
-                else "unknown"
+                "iphone" if model.startswith("iPhone") else "ipad" if model.startswith("iPad") else "unknown"
             )
             if platform == "unknown" and platform_code != PLATFORM_IOS:
                 continue
             # The short id keeps two unnamed devices of one model apart.
-            label = (
-                name or f"{model_name(model) or 'iOS device'} ({directory.name[:8]})"
-            )
+            label = name or f"{model or 'iOS device'} ({directory.name[:8]})"
             devices.append(Device(directory.name, label, platform, self.name, model))
         return devices
 
-    def read(
-        self, state: dict[str, Any] | None
-    ) -> tuple[list[UsageEvent], dict[str, Any]]:
+    def read(self, state: dict[str, Any] | None) -> tuple[list[UsageEvent], dict[str, Any]]:
         state = dict(state or {})
         events: list[UsageEvent] = []
         for device in self.devices():
@@ -220,11 +210,7 @@ class BiomeSource:
                 for bundle, start, end in closed:
                     if cursor is not None and start < cursor:
                         continue  # emitted by an earlier run
-                    events.append(
-                        UsageEvent(
-                            device.id, bundle, _cf_to_utc(start), _cf_to_utc(end)
-                        )
-                    )
+                    events.append(UsageEvent(device.id, bundle, _cf_to_utc(start), _cf_to_utc(end)))
                     cursor = end
             state[device.id] = {
                 "file": files[-1].name,

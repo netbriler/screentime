@@ -9,7 +9,6 @@ import zlib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from screentime.sources import model_name
 from screentime.sources.biome import (
     STREAM,
     BiomeSource,
@@ -138,7 +137,7 @@ def test_devices(tmp_path: Path) -> None:
     devices = {d.id: d for d in BiomeSource(library).devices()}
     assert set(devices) == {PHONE, PAD}  # no Apple TV, no stream without a peer
     assert devices[PHONE].platform == "iphone"
-    assert devices[PHONE].name == f"iPhone 15 Pro ({PHONE[:8]})"
+    assert devices[PHONE].name == f"iPhone16,1 ({PHONE[:8]})"
     assert devices[PHONE].model == "iPhone16,1"
     assert (devices[PAD].platform, devices[PAD].name) == ("ipad", "Test iPad")
     assert devices[PAD].source == "biome"
@@ -175,9 +174,7 @@ def test_read_incremental(tmp_path: Path) -> None:
     # The newest segment grows: the open interval closes with its original start.
     write(library, PHONE, 1000, [*first, event("com.example.chat", T0 + 160, False)])
     events, state = source.read(state)
-    assert [(e.bundle_id, e.start, e.end) for e in events] == [
-        ("com.example.chat", at(T0 + 100), at(T0 + 160))
-    ]
+    assert [(e.bundle_id, e.start, e.end) for e in events] == [("com.example.chat", at(T0 + 100), at(T0 + 160))]
 
     # A new segment continues an interval opened in the previous one.
     first += [
@@ -200,9 +197,7 @@ def test_read_incremental(tmp_path: Path) -> None:
         ],
     )
     events, state = source.read(state)
-    assert [(e.bundle_id, e.start, e.end) for e in events] == [
-        ("com.example.maps", at(T0 + 200), at(T0 + 260))
-    ]
+    assert [(e.bundle_id, e.start, e.end) for e in events] == [("com.example.maps", at(T0 + 200), at(T0 + 260))]
     assert state[PHONE]["file"] == "2000"
     assert source.read(state)[0] == []
 
@@ -256,9 +251,3 @@ def test_truncated_and_foreign_files(tmp_path: Path) -> None:
     ]
     assert state[PHONE]["file"] == "4000"
     assert snapshot(library) == before  # read-only: no -shm/-wal, no touched files
-
-
-def test_model_name() -> None:
-    assert model_name("iPhone18,1") == "iPhone 17 Pro"
-    assert model_name("iPad16,3") == "iPad Pro 11-inch (M4)"
-    assert model_name("iPhone99,9") == "iPhone99,9"

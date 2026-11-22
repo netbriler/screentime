@@ -1,4 +1,4 @@
-"""The launchd agent that runs ``screentime run`` every 15 minutes."""
+"""The launchd agent that runs ``screentime run`` every minute."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ import sys
 from .config import config_path
 
 # SCREENTIME_AGENT_LABEL lets a test agent run next to the real one.
-DEFAULT_LABEL = "io.github.nichtlegacy.screentime"
+DEFAULT_LABEL = "com.netbriler.screentime"
 LABEL = os.getenv("SCREENTIME_AGENT_LABEL") or DEFAULT_LABEL
-INTERVAL_S = 900
+INTERVAL_S = 60
 LOG_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -81,9 +81,7 @@ def plist(executable: Path) -> dict[str, object]:
 
 
 def _launchctl(*args: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        ["launchctl", *args], capture_output=True, text=True, check=False
-    )
+    return subprocess.run(["launchctl", *args], capture_output=True, text=True, check=False)
 
 
 def _domain() -> str:

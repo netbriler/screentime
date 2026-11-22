@@ -68,9 +68,7 @@ def db(tmp_path):
 def test_device_from_ioreg_and_scutil(db):
     source = kc.KnowledgeCSource(db[0])
     assert source.name == "knowledgec"
-    assert source.devices() == [
-        Device(id=f"mac:{UUID}", name="Test Mac", platform="mac", source="knowledgec")
-    ]
+    assert source.devices() == [Device(id=f"mac:{UUID}", name="Test Mac", platform="mac", source="knowledgec")]
 
 
 def test_off_macos_degrades_to_nothing(db, fake_mac):

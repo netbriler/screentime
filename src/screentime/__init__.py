@@ -1,3 +1,3 @@
-"""Apple Screen Time exporter."""
+"""Apple Screen Time tracker: reads app usage on the Mac and sends it to your servers."""
 
-__version__ = "2.0.0"
+__version__ = "3.0.0"

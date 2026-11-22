@@ -54,9 +54,7 @@ ORDER BY o.ZCREATIONDATE
 def _run(cmd: list[str]) -> str:
     """Command output, or "" if it is unavailable (e.g. not on macOS)."""
     try:
-        return subprocess.run(
-            cmd, capture_output=True, text=True, timeout=10, check=True
-        ).stdout
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=True).stdout
     except (OSError, subprocess.SubprocessError):
         return ""
 
@@ -90,9 +88,7 @@ class KnowledgeCSource:
     def devices(self) -> list[Device]:
         return [self._device] if self._device else []
 
-    def read(
-        self, state: dict[str, Any] | None
-    ) -> tuple[list[UsageEvent], dict[str, Any]]:
+    def read(self, state: dict[str, Any] | None) -> tuple[list[UsageEvent], dict[str, Any]]:
         state = dict(state or {})
         device = self._device
         if device is None:
@@ -110,9 +106,7 @@ class KnowledgeCSource:
             # Zero-length rows exist and often share their start with a real
             # row; they would collide in the (device, start, bundle) upsert.
             if bundle_id and end > start:
-                events.append(
-                    UsageEvent(device.id, bundle_id, _to_utc(start), _to_utc(end))
-                )
+                events.append(UsageEvent(device.id, bundle_id, _to_utc(start), _to_utc(end)))
         state["created"] = cursor
         return events, state
 

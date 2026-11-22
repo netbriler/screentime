@@ -35,12 +35,8 @@ build/
 
 # Local dev/test only
 .local/
-docker/.env
 AGENTS.md
 CLAUDE.md
 
 # Build output
 dist/
-
-# Landing page build (scripts/build_site.sh)
-_site/
