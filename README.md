@@ -16,7 +16,7 @@ messages and documents. So the work is split:
 ```
 ┌──────────────────────────────┐   Full Disk Access        ┌───────────────────────────────┐  no access, sandboxed
 │ screentime-collector (C)     │ ────────────────────────▶ │ screentime run (Python)       │ ───────────────────▶ your servers
-│ ~300 lines, no network,      │  writes only to its own   │ parses, names apps, queues,   │  HTTPS, Bearer token
+│ ~370 lines, no network,      │  writes only to its own   │ parses, names apps, queues,   │  HTTPS, Bearer token
 │ fixed paths and one query    │  folder                   │ sends                         │
 └──────────────────────────────┘                           └───────────────────────────────┘
 ```
