@@ -115,7 +115,7 @@ def resolve(
     now = datetime.now(UTC)
     for bundle_id, info in list(apps.items()):
         cached = cache.get(bundle_id)
-        if not info.name and cached:
+        if not info.name and cached and "category" in cached:
             apps[bundle_id] = AppInfo(cached.get("name") or "", cached.get("category") or "")
     if not lookup:
         return apps
@@ -125,6 +125,8 @@ def resolve(
         if not info.name
         and (
             bundle_id not in cache
+            # cached before categories were kept: ask again once
+            or "category" not in cache[bundle_id]
             or not cache[bundle_id].get("name")
             and now - datetime.fromisoformat(cache[bundle_id]["checked_at"]) > LOOKUP_RETRY
         )
