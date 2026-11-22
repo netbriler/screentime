@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from .apps import app_name
 from .config import Settings, data_dir
 from .locking import process_lock
 from .sender import SendError, send_outbox
@@ -52,6 +53,7 @@ def _event(event: UsageEvent) -> dict[str, Any]:
     return {
         "device_id": event.device_id,
         "bundle_id": event.bundle_id,
+        "app_name": app_name(event.bundle_id),
         "start": event.start.isoformat(),
         "end": event.end.isoformat(),
     }

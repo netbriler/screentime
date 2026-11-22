@@ -3,7 +3,7 @@
 ```json
 {
   "devices": [{"id": "…", "name": "My iPhone", "platform": "iphone", "model": "iPhone17,1", "source": "biome"}],
-  "events": [{"device_id": "…", "bundle_id": "com.google.ios.youtube",
+  "events": [{"device_id": "…", "bundle_id": "com.google.ios.youtube", "app_name": "YouTube",
               "start": "2026-11-22T09:00:00+00:00", "end": "2026-11-22T09:12:30+00:00"}]
 }
 ```

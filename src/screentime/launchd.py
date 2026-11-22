@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from .config import config_path
+from .sandbox import SANDBOX_EXEC, profile_path, write_profile
 
 # SCREENTIME_AGENT_LABEL lets a test agent run next to the real one.
 DEFAULT_LABEL = "com.netbriler.screentime"
@@ -66,7 +67,8 @@ def fda_binary() -> str:
 def plist(executable: Path) -> dict[str, object]:
     return {
         "Label": LABEL,
-        "ProgramArguments": [str(executable), "run"],
+        # Always inside the sandbox (sandbox.py): Full Disk Access reaches only the Screen Time stores.
+        "ProgramArguments": [SANDBOX_EXEC, "-f", str(profile_path()), str(executable), "run"],
         # The label tells `run` which log directory to rotate.
         "EnvironmentVariables": {
             "SCREENTIME_CONFIG": str(config_path()),
@@ -97,6 +99,7 @@ def install(executable: Path) -> Path:
     path = plist_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     log_dir().mkdir(parents=True, exist_ok=True)
+    write_profile(log_dir())
     path.write_bytes(plistlib.dumps(plist(executable)))
     if loaded():
         _launchctl("bootout", f"{_domain()}/{LABEL}")

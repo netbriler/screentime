@@ -8,7 +8,9 @@ import json
 import logging
 import sys
 
-from . import __version__, launchd
+import subprocess
+
+from . import __version__, launchd, sandbox
 from .config import config_path, load_settings
 from .locking import LockBusyError
 from .sender import SendError, post
@@ -56,7 +58,33 @@ def _test(args: argparse.Namespace) -> int:
     if not settings.servers:
         ok = False
         print(f"No servers configured in {config_path()}")
+    ok = _test_sandbox() and ok
     return 0 if ok else 1
+
+
+def _test_sandbox() -> bool:
+    """Run the sandbox self-check the way the agent runs, inside the installed profile."""
+    profile = sandbox.profile_path()
+    if not profile.exists():
+        print("Sandbox: not set up yet (`screentime install` writes it)")
+        return True
+    result = subprocess.run(
+        [sandbox.SANDBOX_EXEC, "-f", str(profile), str(launchd.program()), "sandbox-check"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    print(result.stdout.strip() or result.stderr.strip() or f"Sandbox: check exited with {result.returncode}")
+    return result.returncode == 0
+
+
+def _sandbox_check(args: argparse.Namespace) -> int:
+    problems = sandbox.check()
+    if problems:
+        print("Sandbox: NOT holding — " + "; ".join(problems))
+        return 1
+    print("Sandbox: holds (home folder unreadable, no writes outside the tracker's own folders)")
+    return 0
 
 
 def _install(args: argparse.Namespace) -> int:
@@ -83,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
         ("uninstall", _uninstall, "remove the background agent"),
     ):
         commands.add_parser(name, help=help_text).set_defaults(handler=handler)
+    # Run by `screentime test` inside the sandbox; not meant to be called by hand.
+    commands.add_parser("sandbox-check").set_defaults(handler=_sandbox_check)
     args = parser.parse_args(argv)
     return args.handler(args)
 
