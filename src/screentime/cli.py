@@ -1,4 +1,4 @@
-"""``screentime`` command line: run, test, install, uninstall."""
+"""``screentime`` command line: status, test, run, install, uninstall."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import logging
 import subprocess
 import sys
 
-from . import __version__, collector, launchd, sandbox
+from . import __version__, collector, launchd, sandbox, status
 from .config import config_path, load_settings
 from .locking import LockBusyError
 from .sender import SendError, post
@@ -93,6 +93,10 @@ def _sandbox_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _status(args: argparse.Namespace) -> int:
+    return status.show(load_settings())
+
+
 def _install(args: argparse.Namespace) -> int:
     binary = collector.build()
     for path in launchd.install(launchd.program()):
@@ -113,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=__version__)
     commands = parser.add_subparsers(dest="command", required=True)
     for name, handler, help_text in (
+        ("status", _status, "show whether everything works"),
         ("run", _run, "read new usage and send it (what the agent runs)"),
         ("test", _test, "check Full Disk Access and the servers"),
         ("install", _install, "install the background agent"),

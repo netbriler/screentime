@@ -126,6 +126,7 @@ sent twice only updates itself on the server.
 
 | Command | |
 |---|---|
+| `screentime status` | whether everything works: agents, the collector's and tracker's last runs, queues, devices |
 | `screentime install` | build the collector, install both agents and the sandbox profile |
 | `screentime test` | collector freshness, every server, sandbox self-check |
 | `screentime run` | read and send now (what the tracker agent runs) |
