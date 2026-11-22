@@ -4,7 +4,7 @@ The agent needs Full Disk Access to read Screen Time, and macOS grants it to the
 takes back everything else, enforced by the kernel rather than by this code:
 
 * nothing in the home folder can be read except the Python that runs the tracker, its config, its own state and
-  logs, and the two Screen Time stores;
+  logs, and the collector's copy of the Screen Time stores (the real stores stay out of reach);
 * nothing can be written except its own state, its logs and the temporary folder;
 * the network stays open, to reach the servers.
 
@@ -32,9 +32,6 @@ def _quote(path: Path | str) -> str:
 
 
 def profile(log_dir: Path) -> str:
-    # Imported here: sync imports the sources, which this module does not otherwise need.
-    from .sync import BIOME_STREAM, KNOWLEDGEC_DB, LIBRARY
-
     home = Path.home()
     python_dirs = {
         Path(sys.prefix),
@@ -47,10 +44,7 @@ def profile(log_dir: Path) -> str:
         *sorted(python_dirs),
         config_path().parent,
         data_dir(),
-        log_dir,
-        BIOME_STREAM,
-        LIBRARY / "Biome" / "sync",  # names of the synced iPhones and iPads
-        KNOWLEDGEC_DB.parent,
+        log_dir,  # data_dir() holds the collector's snapshot too
     ]
     writable = [data_dir(), log_dir]
     lines = [

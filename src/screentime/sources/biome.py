@@ -149,8 +149,10 @@ def _segments(directory: Path) -> list[Path]:
 class BiomeSource:
     name = "biome"
 
-    def __init__(self, library: Path) -> None:
+    def __init__(self, library: Path, models: dict[str, str] | None = None) -> None:
         self.library = Path(library)
+        # Hardware models by IDS id, as the collector exports them; None reads them from knowledgeC (tests).
+        self.models = models
 
     def devices(self) -> list[Device]:
         """iOS/iPadOS peers from ``sync.db`` that have an App.InFocus stream."""
@@ -165,12 +167,14 @@ class BiomeSource:
             )
         }
         # knowledgeC knows the hardware model (e.g. "iPhone16,1") by IDS id.
-        models = dict(
-            _query(
-                self.library / KNOWLEDGE_DB,
-                "SELECT ZRAPPORTID, ZMODEL FROM ZSYNCPEER WHERE ZRAPPORTID IS NOT NULL AND ZMODEL IS NOT NULL",
+        models = self.models
+        if models is None:
+            models = dict(
+                _query(
+                    self.library / KNOWLEDGE_DB,
+                    "SELECT ZRAPPORTID, ZMODEL FROM ZSYNCPEER WHERE ZRAPPORTID IS NOT NULL AND ZMODEL IS NOT NULL",
+                )
             )
-        )
         devices = []
         for directory in sorted(streams.iterdir()):
             if directory.name not in peers:

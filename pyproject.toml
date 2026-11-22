@@ -19,7 +19,7 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-screentime = ["data/*.json", "py.typed"]
+screentime = ["data/*.json", "collector/*.c", "py.typed"]
 
 [dependency-groups]
 dev = [

@@ -1,4 +1,5 @@
-"""The launchd agent that runs ``screentime run`` every minute."""
+"""The two launchd agents, both every minute: the collector (Full Disk Access, copies the stores) and the tracker
+(no access, sandboxed, reads the copies and sends them)."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ import subprocess
 import sys
 
 from .config import config_path
+from .collector import binary_path
 from .sandbox import SANDBOX_EXEC, profile_path, write_profile
 
 # SCREENTIME_AGENT_LABEL lets a test agent run next to the real one.
@@ -19,8 +21,11 @@ INTERVAL_S = 60
 LOG_MAX_BYTES = 5 * 1024 * 1024
 
 
-def plist_path() -> Path:
-    return Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
+COLLECTOR_LABEL = f"{LABEL}.collector"
+
+
+def plist_path(label: str = LABEL) -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{label}.plist"
 
 
 def log_dir() -> Path:
@@ -53,15 +58,16 @@ def program() -> Path:
     return script if script.exists() else Path(shutil.which("screentime") or script)
 
 
-def fda_binary() -> str:
-    """The file that needs Full Disk Access when launchd runs the agent.
-
-    launchd makes the agent its own "responsible process", and the script's
-    shebang execs the venv Python, a symlink chain ending at the real
-    interpreter binary (e.g. ``~/.local/share/uv/python/cpython-3.13.11-…/
-    bin/python3.13``). macOS checks that resolved file.
-    """
-    return os.path.realpath(sys.executable)
+def collector_plist() -> dict[str, object]:
+    return {
+        "Label": COLLECTOR_LABEL,
+        # The binary itself, not through Python or a shell: macOS checks Full Disk Access on this process.
+        "ProgramArguments": [str(binary_path())],
+        "StartInterval": INTERVAL_S,
+        "RunAtLoad": True,
+        "StandardOutPath": str(log_dir() / "collector.log"),
+        "StandardErrorPath": str(log_dir() / "collector.err.log"),
+    }
 
 
 def plist(executable: Path) -> dict[str, object]:
@@ -90,32 +96,38 @@ def _domain() -> str:
     return f"gui/{os.getuid()}"
 
 
-def loaded() -> bool:
-    return _launchctl("print", f"{_domain()}/{LABEL}").returncode == 0
+def loaded(label: str = LABEL) -> bool:
+    return _launchctl("print", f"{_domain()}/{label}").returncode == 0
 
 
-def install(executable: Path) -> Path:
-    """Write the plist and (re)load the agent; it runs once right away."""
-    path = plist_path()
+def _load(label: str, content: dict[str, object]) -> Path:
+    path = plist_path(label)
     path.parent.mkdir(parents=True, exist_ok=True)
-    log_dir().mkdir(parents=True, exist_ok=True)
-    write_profile(log_dir())
-    path.write_bytes(plistlib.dumps(plist(executable)))
-    if loaded():
-        _launchctl("bootout", f"{_domain()}/{LABEL}")
+    path.write_bytes(plistlib.dumps(content))
+    if loaded(label):
+        _launchctl("bootout", f"{_domain()}/{label}")
     result = _launchctl("bootstrap", _domain(), str(path))
     if result.returncode:
-        raise RuntimeError(f"launchctl bootstrap failed: {result.stderr.strip()}")
+        raise RuntimeError(f"launchctl bootstrap failed for {label}: {result.stderr.strip()}")
     return path
 
 
+def install(executable: Path) -> list[Path]:
+    """Write both plists and (re)load the agents; each runs once right away."""
+    log_dir().mkdir(parents=True, exist_ok=True)
+    write_profile(log_dir())
+    return [_load(COLLECTOR_LABEL, collector_plist()), _load(LABEL, plist(executable))]
+
+
 def uninstall() -> bool:
-    """Unload and delete the agent; False if there was nothing to remove."""
-    was_loaded = loaded()
-    if was_loaded:
-        _launchctl("bootout", f"{_domain()}/{LABEL}")
-    path = plist_path()
-    if path.exists():
-        path.unlink()
-        return True
-    return was_loaded
+    """Unload and delete both agents; False if there was nothing to remove."""
+    removed = False
+    for label in (LABEL, COLLECTOR_LABEL):
+        if loaded(label):
+            _launchctl("bootout", f"{_domain()}/{label}")
+            removed = True
+        path = plist_path(label)
+        if path.exists():
+            path.unlink()
+            removed = True
+    return removed

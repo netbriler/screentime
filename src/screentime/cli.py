@@ -6,19 +6,18 @@ import argparse
 from dataclasses import asdict
 import json
 import logging
+import subprocess
 import sys
 
-import subprocess
-
-from . import __version__, launchd, sandbox
+from . import __version__, collector, launchd, sandbox
 from .config import config_path, load_settings
 from .locking import LockBusyError
 from .sender import SendError, post
-from .sync import denied_paths, run
+from .sync import run
 
 FDA_HINT = (
-    "Give Full Disk Access (System Settings → Privacy & Security → Full Disk Access) to this file, "
-    "which the background agent runs as:\n  {binary}"
+    "Give Full Disk Access (System Settings → Privacy & Security → Full Disk Access) to the collector, and to "
+    "nothing else:\n  {binary}"
 )
 
 
@@ -39,12 +38,7 @@ def _run(args: argparse.Namespace) -> int:
 
 def _test(args: argparse.Namespace) -> int:
     settings = load_settings()
-    ok = True
-    for path in denied_paths(settings):
-        ok = False
-        print(f"No Full Disk Access: cannot read {path}")
-    if not ok:
-        print(FDA_HINT.format(binary=launchd.fda_binary()))
+    ok = _test_collector()
     for server in settings.servers:
         if not server.enabled:
             print(f"{server.name}: disabled")
@@ -60,6 +54,18 @@ def _test(args: argparse.Namespace) -> int:
         print(f"No servers configured in {config_path()}")
     ok = _test_sandbox() and ok
     return 0 if ok else 1
+
+
+def _test_collector() -> bool:
+    age = collector.snapshot_age()
+    if age is None:
+        print("Collector: no copy yet. " + FDA_HINT.format(binary=collector.binary_path()))
+        print(f"  Its log: {launchd.log_dir() / 'collector.err.log'}")
+        return False
+    print(f"Collector: last copy {age:.0f} s ago")
+    if age > 15 * 60:
+        print(f"  That is old; check {launchd.log_dir() / 'collector.err.log'}")
+    return True
 
 
 def _test_sandbox() -> bool:
@@ -88,9 +94,11 @@ def _sandbox_check(args: argparse.Namespace) -> int:
 
 
 def _install(args: argparse.Namespace) -> int:
-    path = launchd.install(launchd.program())
-    print(f"Agent installed: {path}; it runs every {launchd.INTERVAL_S} s.")
-    print(FDA_HINT.format(binary=launchd.fda_binary()))
+    binary = collector.build()
+    for path in launchd.install(launchd.program()):
+        print(f"Agent installed: {path}")
+    print(f"Both run every {launchd.INTERVAL_S} s. The tracker needs no access and runs in the sandbox.")
+    print(FDA_HINT.format(binary=binary))
     return 0
 
 

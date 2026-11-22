@@ -20,6 +20,7 @@ cursor is the creation date (not the end) and re-reads ``OVERLAP_SECONDS``.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -137,3 +138,40 @@ class KnowledgeCSource:
 def _signature(path: Path) -> tuple[int, int]:
     st = path.stat()
     return st.st_mtime_ns, st.st_size
+
+
+class KnowledgeCExportSource(KnowledgeCSource):
+    """This Mac's usage as the collector exports it: rows of the same query, in ``new-<ms>.jsonl`` files.
+
+    The tracker never opens knowledgeC itself. Each run reads the files written since the last one, oldest first;
+    files read by the previous run are deleted, because their events are queued by now. The collector reads the
+    last hour again every time, so the same rows come more than once; the tracker drops repeats before sending.
+    """
+
+    def __init__(self, export_dir: Path) -> None:
+        super().__init__(export_dir / "knowledgeC.db")  # only for the device; never opened
+        self.export_dir = Path(export_dir)
+
+    def read(self, state: dict[str, Any] | None) -> tuple[list[UsageEvent], dict[str, Any]]:
+        state = dict(state or {})
+        device = self._device
+        if device is None or not self.export_dir.is_dir():
+            return [], state
+        last = str(state.get("file") or "")
+        files = sorted(self.export_dir.glob("new-*.jsonl"))
+        for path in files:
+            if path.name <= last:
+                path.unlink(missing_ok=True)
+        events = []
+        for path in (p for p in files if p.name > last):
+            for line in path.read_text("utf-8").splitlines():
+                try:
+                    row = json.loads(line)
+                    bundle_id, start, end = str(row["bundle_id"]), float(row["start"]), float(row["end"])
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if bundle_id and end > start:
+                    events.append(UsageEvent(device.id, bundle_id, _to_utc(start), _to_utc(end)))
+            last = path.name
+        state["file"] = last
+        return events, state
