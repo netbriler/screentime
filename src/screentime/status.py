@@ -90,8 +90,15 @@ def show(settings: Settings) -> int:
     print(f"{BOLD}Screen Time tracker{RESET}")
 
     # Agents
-    print(f"\n{BOLD}Agents{RESET}  {DIM}(every {launchd.INTERVAL_S} s){RESET}")
-    for label, title in ((launchd.COLLECTOR_LABEL, "collector"), (launchd.LABEL, "tracker")):
+    print(
+        f"\n{BOLD}Agents{RESET}  {DIM}(collector and tracker every {launchd.INTERVAL_S} s, console every "
+        f"{launchd.CONSOLE_INTERVAL_S} s){RESET}"
+    )
+    for label, title in (
+        (launchd.COLLECTOR_LABEL, "collector"),
+        (launchd.LABEL, "tracker"),
+        (launchd.CONSOLE_LABEL, "console"),
+    ):
         info = _agent(label)
         if info is None:
             problems += 1

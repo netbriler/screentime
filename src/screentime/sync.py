@@ -105,11 +105,9 @@ def _event(event: UsageEvent, apps: dict[str, AppInfo], background: bool = False
     }
 
 
-def _background(event: UsageEvent, state: dict[str, Any], now: datetime) -> bool:
+def _background(event: UsageEvent, away: session.Away, now: datetime) -> bool:
     """This Mac's event while another account was on screen (see session); other devices are never marked."""
-    return event.device_id.startswith("mac:") and session.in_background(
-        event.start, event.end, state.get("away", []), now
-    )
+    return event.device_id.startswith("mac:") and session.in_background(event.start, event.end, away, now)
 
 
 # Every server says in each reply what it holds: the start of its newest event per device. If that goes back
@@ -156,7 +154,7 @@ def run(settings: Settings) -> RunResult:
         now = datetime.now(UTC)
         replay = now.isoformat() < state.get("replay_until", "")
         result.on_screen = session.on_console()
-        session.record(state, now, result.on_screen)
+        away = session.load()  # the console agent's samples
         latest_by_server = state.setdefault("latest", {})
         devices: dict[str, dict[str, Any]] = {}
         for source in enabled_sources(settings):
@@ -181,7 +179,7 @@ def run(settings: Settings) -> RunResult:
             payload = [
                 (
                     id(event) in fresh and (not replay or event.start.isoformat() >= recent),
-                    _event(event, apps, _background(event, state, now)),
+                    _event(event, apps, _background(event, away, now)),
                 )
                 for event in events
             ]

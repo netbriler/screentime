@@ -129,8 +129,9 @@ Authorization: Bearer <token>
 
 `background` marks this Mac's events from a session that was not on screen for at least a minute of them. With fast
 user switching, Screen Time in the account left behind keeps counting its front app as used while another account
-is on screen. The tracker runs every minute in your session either way and notes whether `/dev/console` belongs to
-you; such events are only marked, never shortened.
+is on screen. A third agent, `com.netbriler.screentime.console`, runs every 10 seconds in your session either way,
+sandboxed like the tracker: one Python start and one look at who owns `/dev/console`. It keeps the stretches with
+another account on screen in `away.json`; such events are only marked, never shortened.
 
 Nothing is sent when nothing is new. Each server has its own queue in
 `~/Library/Application Support/screentime/state.json`: one that is down keeps its events and gets them on a later

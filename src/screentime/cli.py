@@ -121,7 +121,10 @@ def _install(args: argparse.Namespace) -> int:
     binary = collector.build()
     for path in launchd.install(launchd.program()):
         print(f"Agent installed: {path}")
-    print(f"Both run every {launchd.INTERVAL_S} s. The tracker needs no access and runs in the sandbox.")
+    print(
+        f"The collector and the tracker run every {launchd.INTERVAL_S} s, the console check every "
+        f"{launchd.CONSOLE_INTERVAL_S} s. The tracker and the console check need no access and run in the sandbox."
+    )
     print(FDA_HINT.format(binary=binary))
     return 0
 

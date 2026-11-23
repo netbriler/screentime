@@ -1,5 +1,6 @@
-"""The two launchd agents, both every minute: the collector (Full Disk Access, copies the stores) and the tracker
-(no access, sandboxed, reads the copies and sends them)."""
+"""The launchd agents: the collector (Full Disk Access, copies the stores) and the tracker (no access, sandboxed, reads
+the copies and sends them), both every minute; and the console check (sandboxed, every few seconds), which notes when
+another account is on screen (session.py)."""
 
 from __future__ import annotations
 
@@ -18,10 +19,12 @@ from .sandbox import SANDBOX_EXEC, profile_path, write_profile
 DEFAULT_LABEL = "com.netbriler.screentime"
 LABEL = os.getenv("SCREENTIME_AGENT_LABEL") or DEFAULT_LABEL
 INTERVAL_S = 60
+CONSOLE_INTERVAL_S = 10  # a Python start and one stat: cheap enough to know a switch to within seconds
 LOG_MAX_BYTES = 5 * 1024 * 1024
 
 
 COLLECTOR_LABEL = f"{LABEL}.collector"
+CONSOLE_LABEL = f"{LABEL}.console"
 
 
 def plist_path(label: str = LABEL) -> Path:
@@ -88,6 +91,25 @@ def plist(executable: Path) -> dict[str, object]:
     }
 
 
+def console_plist() -> dict[str, object]:
+    return {
+        "Label": CONSOLE_LABEL,
+        # Python itself with only session.py, not the `screentime` command: no requests, no sources, no config file.
+        "ProgramArguments": [
+            SANDBOX_EXEC,
+            "-f",
+            str(profile_path()),
+            sys.executable,
+            "-I",
+            "-m",
+            "screentime.session",
+        ],
+        "StartInterval": CONSOLE_INTERVAL_S,
+        "RunAtLoad": True,
+        "StandardErrorPath": str(log_dir() / "console.err.log"),
+    }
+
+
 def _launchctl(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["launchctl", *args], capture_output=True, text=True, check=False)
 
@@ -113,16 +135,20 @@ def _load(label: str, content: dict[str, object]) -> Path:
 
 
 def install(executable: Path) -> list[Path]:
-    """Write both plists and (re)load the agents; each runs once right away."""
+    """Write the plists and (re)load the agents; each runs once right away."""
     log_dir().mkdir(parents=True, exist_ok=True)
     write_profile(log_dir())
-    return [_load(COLLECTOR_LABEL, collector_plist()), _load(LABEL, plist(executable))]
+    return [
+        _load(COLLECTOR_LABEL, collector_plist()),
+        _load(LABEL, plist(executable)),
+        _load(CONSOLE_LABEL, console_plist()),
+    ]
 
 
 def uninstall() -> bool:
-    """Unload and delete both agents; False if there was nothing to remove."""
+    """Unload and delete the agents; False if there was nothing to remove."""
     removed = False
-    for label in (LABEL, COLLECTOR_LABEL):
+    for label in (LABEL, COLLECTOR_LABEL, CONSOLE_LABEL):
         if loaded(label):
             _launchctl("bootout", f"{_domain()}/{label}")
             removed = True
