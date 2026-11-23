@@ -85,6 +85,8 @@ again.
 `~/.config/screentime/config.toml`:
 
 ```toml
+# ca_bundle = "~/.config/cf-proxy/bundle.pem"   # optional, before the first table: see below
+
 [[servers]]
 name = "Production"
 url = "https://example.com/screentime-tracker/<path>/"   # SCREENTIME_TRACKER_PATH on the server
@@ -106,6 +108,13 @@ knowledgec = true               # this Mac
 enabled = true                  # false: no requests to Apple at all
 countries = ["us", "id", "pl", "th", "ge", "ua"]   # storefronts in order; the next only for apps not found yet
 ```
+
+**A server behind a local TLS proxy.** The tracker checks https certificates against the bundle it ships with. A
+launchd agent does not get your shell's `REQUESTS_CA_BUNDLE` or `SSL_CERT_FILE`, so a server reached through a local
+proxy with its own certificate authority (for example one that adds Cloudflare Access headers) fails with
+`SSLError`. Set `ca_bundle` to a PEM file with the certificates to trust instead, then run `screentime install`: the
+sandbox profile is rebuilt to let the tracker read that one file and nothing else. The tracker identifies itself as
+`screentime-tracker/<version>`, since Cloudflare's browser check blocks the default Python user agent.
 
 ## What it sends
 
@@ -133,7 +142,7 @@ queues for that server everything newer than what it still has, while the other 
 
 | Command | |
 |---|---|
-| `screentime status` | whether everything works: agents, the collector's and tracker's last runs, queues, devices |
+| `screentime status` | whether everything works: agents, the collector's and tracker's last runs, each server (when it was last reached, or its error and since when; an error clears on the next successful send), queues, devices |
 | `screentime install` | build the collector, install both agents and the sandbox profile |
 | `screentime test` | collector freshness, every server, sandbox self-check |
 | `screentime run` | read and send now (what the tracker agent runs) |

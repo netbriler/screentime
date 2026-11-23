@@ -12,6 +12,9 @@ url = "http://localhost:8000/screentime-tracker/<path>/"
 token = "<token>"
 enabled = true
 
+# ca_bundle = "~/.config/cf-proxy/bundle.pem"  # optional: trust these certificates for https (a local proxy with
+#                                             its own CA); the sandbox lets the tracker read only this file
+
 [sources]
 biome = true           # iPhone/iPad usage synced to this Mac through iCloud
 knowledgec = true      # this Mac's own usage
@@ -51,6 +54,8 @@ class Settings:
     sources: dict[str, bool] = field(default_factory=dict)
     devices: dict[str, str] = field(default_factory=dict)
     request_timeout: float = 30.0
+    # Certificates to verify https with instead of the bundled ones (launchd agents do not get REQUESTS_CA_BUNDLE).
+    ca_bundle: Path | None = None
     lookup_enabled: bool = True  # name unknown apps from Apple's public App Store lookup
     # App Store storefronts to ask, in order: the next one only for apps the previous ones did not have.
     lookup_countries: tuple[str, ...] = DEFAULT_COUNTRIES
@@ -86,6 +91,7 @@ def load_settings(path: Path | None = None) -> Settings:
         sources={str(key): bool(value) for key, value in (raw.get("sources") or {}).items()},
         devices={str(key): str(value) for key, value in (raw.get("devices") or {}).items() if value},
         request_timeout=float(raw.get("request_timeout", 30.0)),
+        ca_bundle=Path(str(raw["ca_bundle"])).expanduser() if raw.get("ca_bundle") else None,
         lookup_enabled=bool((raw.get("lookup") or {}).get("enabled", True)),
         lookup_countries=_countries(raw.get("lookup") or {}),
     )

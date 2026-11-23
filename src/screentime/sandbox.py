@@ -18,7 +18,7 @@ import os
 from pathlib import Path
 import sys
 
-from .config import config_path, data_dir
+from .config import config_path, data_dir, load_settings
 
 SANDBOX_EXEC = "/usr/bin/sandbox-exec"
 
@@ -47,6 +47,9 @@ def profile(log_dir: Path) -> str:
         log_dir,  # data_dir() holds the collector's snapshot too
     ]
     writable = [data_dir(), log_dir]
+    # The certificates the tracker is told to trust (a symlink and its target alike); nothing else outside its folders.
+    ca_bundle = load_settings().ca_bundle
+    certificates = sorted({str(ca_bundle), os.path.realpath(ca_bundle)}) if ca_bundle else []
     lines = [
         "(version 1)",
         "(allow default)",
@@ -63,6 +66,7 @@ def profile(log_dir: Path) -> str:
         f"(deny file-read* (subpath {_quote(home)}))",
         "(allow file-read*",
         *(f"  (subpath {_quote(path)})" for path in readable),
+        *(f"  (literal {_quote(path)})" for path in certificates),
         ")",
         ";; Names and sizes only (no contents), so paths under the home folder still resolve.",
         "(allow file-read-metadata)",

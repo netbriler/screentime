@@ -184,6 +184,7 @@ def run(settings: Settings) -> RunResult:
             save_state(state)
 
         lost = []
+        health = state.setdefault("server_health", {})
         for server in servers:
             outbox = state["outbox"].setdefault(server.name, [])
             contacts = state.setdefault("last_contact", {})
@@ -194,8 +195,17 @@ def run(settings: Settings) -> RunResult:
                 ).isoformat()
             )
             try:
-                sent, latest = send_outbox(server, outbox, list(devices.values()), settings.request_timeout, check=due)
+                sent, latest = send_outbox(
+                    server,
+                    outbox,
+                    list(devices.values()),
+                    settings.request_timeout,
+                    check=due,
+                    ca_bundle=settings.ca_bundle,
+                )
                 result.sent[server.name] = sent
+                # Reached: whatever failed before is over.
+                health[server.name] = {"ok_at": now.isoformat()}
                 if latest is not None:
                     contacts[server.name] = now.isoformat()
                     if gone := _lost_data(latest_by_server.get(server.name, {}), latest):
@@ -205,6 +215,12 @@ def run(settings: Settings) -> RunResult:
                     latest_by_server[server.name] = latest
             except SendError as exc:
                 result.errors.append(str(exc))
+                previous = health.get(server.name, {})
+                health[server.name] = {
+                    **previous,
+                    "error": str(exc),
+                    "error_since": previous.get("error_since") or now.isoformat(),
+                }
             result.queued[server.name] = len(outbox)
             save_state(state)
         for name in lost:

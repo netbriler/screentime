@@ -47,7 +47,7 @@ def _test(args: argparse.Namespace) -> int:
             print(f"{server.name}: disabled")
             continue
         try:
-            post(server, {"devices": [], "events": []}, settings.request_timeout)
+            post(server, {"devices": [], "events": []}, settings.request_timeout, settings.ca_bundle)
             print(f"{server.name}: token accepted")
         except SendError as exc:
             ok = False

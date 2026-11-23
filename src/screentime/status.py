@@ -63,6 +63,13 @@ def _last_error(path: Path) -> str:
     return lines[-1] if lines else ""
 
 
+def _timestamp(value: str | None) -> float | None:
+    try:
+        return datetime.fromisoformat(value).timestamp() if value else None
+    except ValueError:
+        return None
+
+
 def _ago(timestamp: float | None) -> str:
     if timestamp is None:
         return "never"
@@ -127,11 +134,14 @@ def show(settings: Settings) -> int:
         print(f"  {_mark(False)} has not run yet")
     else:
         stale = written is not None and datetime.now().timestamp() - written > STALE_AFTER
-        ok = not run.get("errors") and not stale
+        # Server errors are shown with their server below; here only the tracker's own.
+        servers = tuple(f"{server.name}: " for server in settings.servers)
+        errors = [error for error in run.get("errors", []) if not error.startswith(servers)]
+        ok = not errors and not stale
         problems += not ok
         sent = sum(run.get("sent", {}).values())
         print(f"  {_mark(ok)} last run {_ago(written)}: read {run.get('read', 0)} new events, sent {sent}")
-        for error in run.get("errors", []):
+        for error in errors:
             print(f"    {RED}{error}{RESET}")
 
     # Servers
@@ -144,7 +154,16 @@ def show(settings: Settings) -> int:
         if not server.enabled:
             print(f"  {_mark(None)} {server.name:12} disabled")
             continue
-        print(f"  {_mark(queued == 0)} {server.name:12} {queued} queued  {DIM}{server.url.split('?')[0][:60]}{RESET}")
+        health = state.get("server_health", {}).get(server.name, {})
+        error = health.get("error")
+        problems += bool(error)
+        print(f"  {_mark(not error)} {server.name:12} {queued} queued  {DIM}{server.url.split('?')[0][:60]}{RESET}")
+        if error:
+            print(f"    {RED}{error}{RESET} {DIM}(since {_ago(_timestamp(health.get('error_since')))}){RESET}")
+            if health.get("ok_at"):
+                print(f"    {DIM}last reached {_ago(_timestamp(health['ok_at']))}{RESET}")
+        elif health.get("ok_at"):
+            print(f"    {DIM}reached {_ago(_timestamp(health['ok_at']))}{RESET}")
 
     # Devices
     print(f"\n{BOLD}Devices{RESET}")

@@ -13,26 +13,31 @@ An event is identified by device, bundle id and start, so sending one twice only
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import requests
 
+from . import __version__
 from .config import Server
 
 BATCH_SIZE = 2000
+# Cloudflare's browser check blocks the default python-requests agent.
+USER_AGENT = f"screentime-tracker/{__version__}"
 
 
 class SendError(RuntimeError):
     pass
 
 
-def post(server: Server, body: dict[str, Any], timeout: float) -> dict[str, Any]:
+def post(server: Server, body: dict[str, Any], timeout: float, ca_bundle: Path | None = None) -> dict[str, Any]:
     try:
         response = requests.post(
             server.url,
             json=body,
-            headers={"Authorization": f"Bearer {server.token}"},
+            headers={"Authorization": f"Bearer {server.token}", "User-Agent": USER_AGENT},
             timeout=timeout,
+            verify=str(ca_bundle) if ca_bundle else True,
         )
     except requests.RequestException as exc:
         raise SendError(f"{server.name}: cannot reach the server ({exc.__class__.__name__})") from exc
@@ -51,6 +56,7 @@ def send_outbox(
     timeout: float,
     *,
     check: bool = False,
+    ca_bundle: Path | None = None,
 ) -> tuple[int, dict[str, str] | None]:
     """Send the outbox in batches; sent events are removed from it. Raises SendError and keeps the rest on failure.
 
@@ -60,10 +66,10 @@ def send_outbox(
     sent, latest = 0, None
     while outbox:
         batch = outbox[:BATCH_SIZE]
-        reply = post(server, {"devices": devices, "events": batch}, timeout)
+        reply = post(server, {"devices": devices, "events": batch}, timeout, ca_bundle)
         latest = reply.get("latest", latest)
         del outbox[: len(batch)]
         sent += len(batch)
     if check and not sent:
-        latest = post(server, {"devices": devices, "events": []}, timeout).get("latest")
+        latest = post(server, {"devices": devices, "events": []}, timeout, ca_bundle).get("latest")
     return sent, latest
