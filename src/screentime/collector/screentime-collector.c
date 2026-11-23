@@ -64,9 +64,21 @@ static int make_dirs(const char *path) {
     return mkdir(buf, 0700) != 0 && errno != EEXIST ? -1 : 0;
 }
 
-static int same(const struct stat *a, const struct stat *b) {
-    return a->st_size == b->st_size && a->st_mtimespec.tv_sec == b->st_mtimespec.tv_sec &&
-           a->st_mtimespec.tv_nsec == b->st_mtimespec.tv_nsec;
+/* Whether two files hold the same bytes. Biome preallocates its segments at full size and writes records into them
+ * without changing the modification time, so size and mtime cannot tell a changed segment from an unchanged one. The
+ * segments are 512 KB each, a few of them per device: reading them every minute costs next to nothing. */
+static int same_content(const char *a, const char *b, off_t size) {
+    int fa = open(a, O_RDONLY), fb = open(b, O_RDONLY);
+    int same = fa >= 0 && fb >= 0;
+    char ba[65536], bb[65536];
+    for (off_t left = size; same && left > 0;) {
+        size_t want = left < (off_t)sizeof ba ? (size_t)left : sizeof ba;
+        same = read(fa, ba, want) == (ssize_t)want && read(fb, bb, want) == (ssize_t)want && memcmp(ba, bb, want) == 0;
+        left -= want;
+    }
+    if (fa >= 0) close(fa);
+    if (fb >= 0) close(fb);
+    return same;
 }
 
 /* Copy one regular file if it changed; returns 1 when copied, 0 when unchanged or absent, -1 on error. */
@@ -74,7 +86,7 @@ static int copy_if_changed(const char *src, const char *dst) {
     struct stat s, d;
     if (lstat(src, &s) != 0) return errno == ENOENT ? 0 : -1;
     if (!S_ISREG(s.st_mode)) return 0;
-    if (lstat(dst, &d) == 0 && same(&s, &d)) return 0;
+    if (lstat(dst, &d) == 0 && d.st_size == s.st_size && same_content(src, dst, s.st_size)) return 0;
     char tmp[PATH_MAX];
     if (snprintf(tmp, sizeof tmp, "%s.part", dst) >= (int)sizeof tmp) return -1;
     unlink(tmp);

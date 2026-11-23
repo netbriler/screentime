@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from . import session
 from .apps import AppInfo, resolve
 from .collector import snapshot_library
 from .config import Settings, data_dir
@@ -34,6 +35,7 @@ class RunResult:
     sent: dict[str, int] = field(default_factory=dict)
     queued: dict[str, int] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
+    on_screen: bool | None = None  # this account's session on screen (False: another account is)
 
 
 def _exported(path: Path) -> dict:
@@ -90,7 +92,7 @@ def _device(device: Device, settings: Settings) -> dict[str, Any]:
     return {**asdict(device), "name": settings.devices.get(device.id) or device.name}
 
 
-def _event(event: UsageEvent, apps: dict[str, AppInfo]) -> dict[str, Any]:
+def _event(event: UsageEvent, apps: dict[str, AppInfo], background: bool = False) -> dict[str, Any]:
     app = apps.get(event.bundle_id, AppInfo())
     return {
         "device_id": event.device_id,
@@ -99,7 +101,15 @@ def _event(event: UsageEvent, apps: dict[str, AppInfo]) -> dict[str, Any]:
         "app_category": app.category,
         "start": event.start.isoformat(),
         "end": event.end.isoformat(),
+        "background": background,
     }
+
+
+def _background(event: UsageEvent, state: dict[str, Any], now: datetime) -> bool:
+    """This Mac's event while another account was on screen (see session); other devices are never marked."""
+    return event.device_id.startswith("mac:") and session.in_background(
+        event.start, event.end, state.get("away", []), now
+    )
 
 
 # Every server says in each reply what it holds: the start of its newest event per device. If that goes back
@@ -145,6 +155,8 @@ def run(settings: Settings) -> RunResult:
         state = load_state()
         now = datetime.now(UTC)
         replay = now.isoformat() < state.get("replay_until", "")
+        result.on_screen = session.on_console()
+        session.record(state, now, result.on_screen)
         latest_by_server = state.setdefault("latest", {})
         devices: dict[str, dict[str, Any]] = {}
         for source in enabled_sources(settings):
@@ -167,7 +179,10 @@ def run(settings: Settings) -> RunResult:
             # In a replay, an old event read again is not new: only servers missing it get it (_wanted_in_replay).
             recent = (now - SENT_MEMORY).isoformat()
             payload = [
-                (id(event) in fresh and (not replay or event.start.isoformat() >= recent), _event(event, apps))
+                (
+                    id(event) in fresh and (not replay or event.start.isoformat() >= recent),
+                    _event(event, apps, _background(event, state, now)),
+                )
                 for event in events
             ]
             result.read += sum(is_fresh for is_fresh, _ in payload)

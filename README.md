@@ -124,8 +124,13 @@ Authorization: Bearer <token>
 
 {"devices": [{"id": "…", "name": "My iPhone", "platform": "iphone", "model": "iPhone17,1", "source": "biome"}],
  "events": [{"device_id": "…", "bundle_id": "com.google.ios.youtube", "app_name": "YouTube", "app_category": "Media",
-             "start": "2026-11-22T09:00:00+00:00", "end": "2026-11-22T09:12:30+00:00"}]}
+             "start": "2026-11-22T09:00:00+00:00", "end": "2026-11-22T09:12:30+00:00", "background": false}]}
 ```
+
+`background` marks this Mac's events from a session that was not on screen for at least a minute of them. With fast
+user switching, Screen Time in the account left behind keeps counting its front app as used while another account
+is on screen. The tracker runs every minute in your session either way and notes whether `/dev/console` belongs to
+you; such events are only marked, never shortened.
 
 Nothing is sent when nothing is new. Each server has its own queue in
 `~/Library/Application Support/screentime/state.json`: one that is down keeps its events and gets them on a later
