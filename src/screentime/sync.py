@@ -146,11 +146,22 @@ def _wanted_in_replay(event: dict[str, Any], latest: dict[str, str]) -> bool:
     return event["start"] > floor
 
 
+def _forget_removed_servers(state: dict[str, Any], names: set[str]) -> None:
+    """Drop what is kept for servers no longer in the config: nothing would ever send their queues. A disabled
+    server is still in the config and keeps its queue."""
+    for key in ("outbox", "latest", "last_contact", "server_health"):
+        kept = state.get(key)
+        if isinstance(kept, dict):
+            for name in [name for name in kept if name not in names]:
+                del kept[name]
+
+
 def run(settings: Settings) -> RunResult:
     result = RunResult()
     servers = [server for server in settings.servers if server.enabled]
     with process_lock(data_dir() / "screentime.lock"):
         state = load_state()
+        _forget_removed_servers(state, {server.name for server in settings.servers})
         now = datetime.now(UTC)
         replay = now.isoformat() < state.get("replay_until", "")
         result.on_screen = session.on_console()

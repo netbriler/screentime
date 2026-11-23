@@ -172,8 +172,12 @@ def show(settings: Settings) -> int:
         elif health.get("ok_at"):
             print(f"    {DIM}reached {_ago(_timestamp(health['ok_at']))}{RESET}")
 
-    # Devices
-    print(f"\n{BOLD}Devices{RESET}")
+    # Devices: the newest event a server holds of each, so a phone that has not synced for hours shows.
+    newest: dict[str, str] = {}
+    for latest in state.get("latest", {}).values():
+        for device_id, start in latest.items():
+            newest[device_id] = max(newest.get(device_id, ""), start)
+    print(f"\n{BOLD}Devices{RESET}  {DIM}(newest activity a server holds; iPhone usage comes when it syncs){RESET}")
     for source in enabled_sources(settings):
         try:
             devices = source.devices()
@@ -182,7 +186,8 @@ def show(settings: Settings) -> int:
             continue
         for device in devices:
             name = settings.devices.get(device.id) or device.name
-            print(f"  {_mark(True)} {name:28} {device.platform:7} {DIM}{device.id}{RESET}")
+            seen = _ago(_timestamp(newest.get(device.id)))
+            print(f"  {_mark(True)} {name:28} {device.platform:7} {seen:11} {DIM}{device.id}{RESET}")
         if not devices:
             print(f"  {_mark(None)} {source.name}: no devices yet")
 
